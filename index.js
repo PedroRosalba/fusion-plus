@@ -1,21 +1,23 @@
 const {
-  getRandomBytes32,
+  // getRandomBytes32,
   SDK,
   HashLock,
   PrivateKeyProviderConnector,
   NetworkEnum,
 } = require("@1inch/cross-chain-sdk");
+const {
+  solidityPackedKeccak256,
+  randomBytes,
+  Contract,
+  Wallet,
+  JsonRpcProvider,
+} = require("ethers");
 const { Web3 } = require("web3");
 require("dotenv").config();
 
-async function get_quote(params) {
-  try {
-    const quote = await sdk.getQuote(params);
-    console.log("Quote fetched successfully:", quote);
-    return quote;
-  } catch (error) {
-    console.error("Error fetching quote:", error);
-  }
+function getRandomBytes32() {
+  // for some reason the cross-chain-sdk expects a leading 0x and can't handle a 32 byte long hex string
+  return "0x" + Buffer.from(randomBytes(32)).toString("hex");
 }
 
 const makerPrivateKey = process.env.PRIVATE_KEY;
@@ -29,8 +31,8 @@ const blockchainProvider = new PrivateKeyProviderConnector(
 );
 
 const sdk = new SDK({
-  url: "https://api.1inch.dev/fusion",
-  authKey: process.env.API_KEY,
+  url: "https://api.1inch.dev/fusion-plus",
+  authKey: process.env.ONE_INCH_API_KEY,
   blockchainProvider,
 });
 
@@ -46,7 +48,7 @@ const params = {
 
 (async () => {
   try {
-    const quote = get_quote(params);
+    const quote = await sdk.getQuote(params);
 
     const secretsCount = quote.getPreset().secretsCount;
 
@@ -71,7 +73,7 @@ const params = {
           );
 
     sdk
-      .placeOrder(quote, {
+      .createOrder(quote, {
         walletAddress: makerAddress,
         hashLock,
         secretHashes,
