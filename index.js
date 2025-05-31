@@ -4,6 +4,7 @@ const {
   HashLock,
   PrivateKeyProviderConnector,
   NetworkEnum,
+  PresetEnum,
 } = require("@1inch/cross-chain-sdk");
 const {
   solidityPackedKeccak256,
@@ -22,7 +23,7 @@ function getRandomBytes32() {
 
 const makerPrivateKey = process.env.PRIVATE_KEY;
 const makerAddress = process.env.ADDRESS;
-const nodeUrl = "https://eth-mainnet.g.alchemy.com/v2/demo";
+const nodeUrl = "https://base-rpc.publicnode.com";
 const web3Instance = new Web3(nodeUrl);
 
 const blockchainProvider = new PrivateKeyProviderConnector(
@@ -37,14 +38,16 @@ const sdk = new SDK({
 });
 
 const params = {
-  srcChainId: NetworkEnum.ETHEREUM,
-  dstChainId: NetworkEnum.GNOSIS,
-  srcTokenAddress: "0x6b175474e89094c44da98b954eedeac495271d0f",
-  dstTokenAddress: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-  amount: "1000000000000000000000",
+  srcChainId: NetworkEnum.COINBASE,
+  dstChainId: NetworkEnum.ARBITRUM,
+  srcTokenAddress: "0xc5fecC3a29Fb57B5024eEc8a2239d4621e111CBE", //1inch on base
+  dstTokenAddress: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", //usdc on arbitrum
+  amount: "10000000000000000000", // 10 1inch
   enableEstimate: true,
   walletAddress: makerAddress,
 };
+
+const source = "sdk-tutorial";
 
 (async () => {
   try {
@@ -71,19 +74,39 @@ const params = {
             // because JavaScript is dynamically typed and doesn't have compile-time type assertions.
             // The `map` function will still produce an array of strings (or whatever solidityPackedKeccak256 returns).
           );
-
-    sdk
-      .createOrder(quote, {
-        walletAddress: makerAddress,
+    try {
+      const { hash, quoteId, order } = await sdk.createOrder(quote, {
+        makerAddress,
         hashLock,
+        preset: PresetEnum.fast,
+        source,
         secretHashes,
-        // fee is an optional field
-        fee: {
-          takingFeeBps: 100, // 1% as we use bps format, 1% is equal to 100bps
-          takingFeeReceiver: "0x0000000000000000000000000000000000000000", //  fee receiver address
-        },
-      })
-      .then(console.log);
+      });
+      console.log({ hash, quoteId, order }, "order created");
+
+      try {
+        const _orderInfo = await sdk.submitOrder(
+          quote.srcChainId,
+          order,
+          quoteId,
+          secretHashes
+        );
+      } catch (submitError) {
+        if (submitError.response?.data) {
+          console.error("Response data:", submitError.response.data, null, 2);
+        } else {
+          console.error("Error details:", submitError);
+        }
+        return;
+      }
+    } catch (error) {
+      if (error.response?.data) {
+        console.error("Response data:", error.response.data, null, 2);
+      } else {
+        console.error("Error details:", error);
+      }
+      return;
+    }
   } catch (err) {
     console.error("Error inside async block:", err);
   }
