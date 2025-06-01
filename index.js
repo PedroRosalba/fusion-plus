@@ -14,7 +14,29 @@ const {
   JsonRpcProvider,
 } = require("ethers");
 const { Web3 } = require("web3");
-require("dotenv").config();
+const dotenv = require("dotenv");
+dotenv.config();
+
+const erc20Abi = require("./abi.js");
+
+const TOKEN_ADDRESS = "0xc5fecC3a29Fb57B5024eEc8a2239d4621e111CBE"; // 1inch on base
+const SPENDER = "0x111111125421ca6dc452d289314280a0f8842a65";
+
+async function approveTransfer(amount) {
+  try {
+    const provider = new JsonRpcProvider("https://base-rpc.publicnode.com");
+    const signer = new Wallet(process.env.PRIVATE_KEY, provider);
+    const tokenContract = new Contract(TOKEN_ADDRESS, erc20Abi, signer);
+    
+    const tx = await tokenContract.approve(SPENDER, amount);
+    const receipt = await tx.wait();
+    console.log("Approval transaction:", receipt);
+    return receipt;
+  } catch (error) {
+    console.error("Approval error:", error);
+    return null;
+  }
+}
 
 function getRandomBytes32() {
   // for some reason the cross-chain-sdk expects a leading 0x and can't handle a 32 byte long hex string
@@ -51,63 +73,71 @@ const source = "sdk-tutorial";
 
 (async () => {
   try {
-    const quote = await sdk.getQuote(params);
+    const result = await approveTransfer(10000000000000000000);
+    console.log("Approval result:", result);
 
-    const secretsCount = quote.getPreset().secretsCount;
-
-    const secrets = Array.from({ length: secretsCount }).map(() =>
-      getRandomBytes32()
-    );
-    const secretHashes = secrets.map((x) => HashLock.hashSecret(x));
-
-    const hashLock =
-      secretsCount === 1
-        ? HashLock.forSingleFill(secrets[0])
-        : HashLock.forMultipleFills(
-            secretHashes.map((secretHash, i) =>
-              solidityPackedKeccak256(
-                ["uint64", "bytes32"],
-                [i, secretHash.toString()]
-              )
-            )
-            // The type assertion `as (string & { _tag: "MerkleLeaf"; })[]` is removed
-            // because JavaScript is dynamically typed and doesn't have compile-time type assertions.
-            // The `map` function will still produce an array of strings (or whatever solidityPackedKeccak256 returns).
-          );
-    try {
-      const { hash, quoteId, order } = await sdk.createOrder(quote, {
-        makerAddress,
-        hashLock,
-        preset: PresetEnum.fast,
-        source,
-        secretHashes,
-      });
-      console.log({ hash, quoteId, order }, "order created");
-
-      try {
-        const _orderInfo = await sdk.submitOrder(
-          quote.srcChainId,
-          order,
-          quoteId,
-          secretHashes
-        );
-      } catch (submitError) {
-        if (submitError.response?.data) {
-          console.error("Response data:", submitError.response.data, null, 2);
-        } else {
-          console.error("Error details:", submitError);
-        }
-        return;
-      }
-    } catch (error) {
-      if (error.response?.data) {
-        console.error("Response data:", error.response.data, null, 2);
-      } else {
-        console.error("Error details:", error);
-      }
+    if (!result) {
+      console.log("Approval failed, stopping process");
       return;
     }
-  } catch (err) {
-    console.error("Error inside async block:", err);
+
+    try {
+      const quote = await sdk.getQuote(params);
+
+      const secretsCount = quote.getPreset().secretsCount;
+
+      const secrets = Array.from({ length: secretsCount }).map(() =>
+        getRandomBytes32()
+      );
+      const secretHashes = secrets.map((x) => HashLock.hashSecret(x));
+
+      const hashLock =
+        secretsCount === 1
+          ? HashLock.forSingleFill(secrets[0])
+          : HashLock.forMultipleFills(
+              secretHashes.map((secretHash, i) =>
+                solidityPackedKeccak256(
+                  ["uint64", "bytes32"],
+                  [i, secretHash.toString()]
+                )
+              )
+            );
+      try {
+        const { hash, quoteId, order } = await sdk.createOrder(quote, {
+          makerAddress,
+          hashLock,
+          preset: PresetEnum.fast,
+          source,
+          secretHashes,
+        });
+        console.log({ hash, quoteId, order }, "order created");
+
+        try {
+          const orderInfo = await sdk.submitOrder(
+            quote.srcChainId,
+            order,
+            quoteId,
+            secretHashes
+          );
+          console.log("Order submitted successfully:", orderInfo);
+        } catch (submitError) {
+          if (submitError.response?.data) {
+            console.error("Submit order error:", JSON.stringify(submitError.response.data, null, 2));
+          } else {
+            console.error("Submit order error:", submitError);
+          }
+        }
+      } catch (createOrderError) {
+        if (createOrderError.response?.data) {
+          console.error("Create order error:", JSON.stringify(createOrderError.response.data, null, 2));
+        } else {
+          console.error("Create order error:", createOrderError);
+        }
+      }
+    } catch (quoteError) {
+      console.error("Error getting quote:", quoteError);
+    }
+  } catch (error) {
+    console.error("Script execution error:", error);
   }
 })();
